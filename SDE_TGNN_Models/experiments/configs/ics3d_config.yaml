@@ -1,0 +1,84 @@
+# =============================================================================
+# ICS3D Experiment Configuration
+# Industrial Control System 3-Domain (Cloud + Container + IIoT)
+# Evaluates SDE-TGNN on industrial network security domains
+# =============================================================================
+
+experiment:
+  name: ics3d
+  description: >
+    Three-domain industrial control system evaluation covering
+    Microsoft Azure Cloud, Kubernetes/Docker containers, and
+    Edge-IIoT industrial IoT environments.
+  domains:
+    - microsoft_cloud
+    - kubernetes_docker
+    - edge_iiot
+
+model:
+  hidden_dim: 256
+  state_dim: 64
+  num_layers: 4
+  num_heads: 8
+  dropout: 0.1
+  drift_layers: 3
+  diffusion_layers: 2
+  num_scales: 3
+  activation: gelu
+  norm_type: layer
+
+training:
+  lr: 2.0e-4
+  weight_decay: 1.0e-5
+  epochs: 100
+  batch_size: 256
+  patience: 15
+  scheduler: cosine
+  warmup_epochs: 5
+  grad_clip: 1.0
+  label_smoothing: 0.05
+  loss_weights:
+    classification: 1.0
+    elbo: 0.1
+    calibration: 0.05
+    kl_divergence: 0.01
+
+sde:
+  solver: euler_maruyama
+  dt: 0.01
+  noise_type: diagonal
+  adjoint: true
+  integration_steps: 20
+
+data:
+  normalize: true
+  test_split: 0.2
+  val_split: 0.1
+  num_workers: 4
+  pin_memory: true
+  graph_k: 10
+  max_nodes: 10000
+  temporal_window: 60
+
+fokker_planck:
+  moment_order: 2
+  gaussian_approx: true
+  propagation_steps: 10
+  regularization: 1.0e-6
+
+evaluation:
+  num_calibration_bins: 15
+  adversarial_eps: 0.01
+  pgd_steps: 20
+  pgd_alpha: 0.001
+  mc_samples: 50
+  coverage_levels:
+    - 0.90
+    - 0.95
+    - 0.99
+
+logging:
+  log_interval: 10
+  tensorboard: true
+  save_best: true
+  save_every: 10

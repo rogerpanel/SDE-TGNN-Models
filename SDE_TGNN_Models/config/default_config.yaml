@@ -1,0 +1,78 @@
+# =============================================================================
+# SDE-TGNN Default Configuration
+# Stochastic Differential Equation Temporal Graph Neural Network
+# for Multi-Domain Network Intrusion Detection
+# =============================================================================
+
+model:
+  # Architecture hyperparameters
+  hidden_dim: 256          # Hidden dimension for graph attention layers
+  state_dim: 64            # SDE state dimension
+  num_layers: 4            # Number of graph attention layers
+  num_heads: 8             # Number of attention heads
+  dropout: 0.1             # Dropout probability
+  drift_layers: 3          # Number of MLP layers in drift network
+  diffusion_layers: 2      # Number of MLP layers in diffusion network
+  num_scales: 3            # Number of temporal scales for multi-scale fusion
+  activation: gelu         # Activation function (gelu, relu, silu)
+  norm_type: layer         # Normalization type (layer, batch, none)
+
+training:
+  lr: 2.0e-4               # Learning rate
+  weight_decay: 1.0e-5     # L2 regularization weight
+  epochs: 100              # Maximum number of training epochs
+  batch_size: 256          # Training batch size
+  patience: 15             # Early stopping patience
+  scheduler: cosine        # LR scheduler (cosine, step, plateau)
+  warmup_epochs: 5         # Number of warmup epochs
+  grad_clip: 1.0           # Gradient clipping norm
+  label_smoothing: 0.05    # Label smoothing factor
+  loss_weights:
+    classification: 1.0    # Cross-entropy weight
+    elbo: 0.1              # ELBO loss weight
+    calibration: 0.05      # Calibration loss weight
+    kl_divergence: 0.01    # KL divergence weight
+
+sde:
+  solver: euler_maruyama   # SDE solver (euler_maruyama, milstein, adaptive)
+  dt: 0.01                 # Integration time step
+  noise_type: diagonal     # Noise type (diagonal, scalar, general)
+  adjoint: true            # Use adjoint method for memory-efficient backprop
+  integration_steps: 20    # Number of SDE integration steps
+  brownian_size: 64        # Brownian motion dimension
+  adaptive_stepping: false # Use adaptive step size
+  rtol: 1.0e-3             # Relative tolerance for adaptive solver
+  atol: 1.0e-4             # Absolute tolerance for adaptive solver
+
+data:
+  normalize: true          # Normalize features
+  test_split: 0.2          # Test set ratio
+  val_split: 0.1           # Validation set ratio
+  num_workers: 4           # DataLoader workers
+  pin_memory: true         # Pin memory for faster GPU transfer
+  graph_k: 10              # k for k-NN graph construction
+  max_nodes: 10000         # Maximum nodes per subgraph
+  temporal_window: 60      # Temporal window in seconds for graph snapshots
+
+fokker_planck:
+  moment_order: 2          # Order of moment propagation
+  gaussian_approx: true    # Use Gaussian approximation
+  propagation_steps: 10    # Number of propagation steps
+  regularization: 1.0e-6   # Numerical regularization for covariance
+
+evaluation:
+  num_calibration_bins: 15 # ECE histogram bins
+  adversarial_eps: 0.01    # Adversarial perturbation budget
+  pgd_steps: 20            # PGD attack steps
+  pgd_alpha: 0.001         # PGD step size
+  mc_samples: 50           # Monte Carlo samples for uncertainty
+  coverage_levels:         # Prediction interval coverage levels
+    - 0.90
+    - 0.95
+    - 0.99
+
+logging:
+  log_interval: 10         # Log every N batches
+  tensorboard: true        # Enable TensorBoard logging
+  save_best: true          # Save best model checkpoint
+  save_every: 10           # Save checkpoint every N epochs
