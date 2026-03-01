@@ -1,0 +1,881 @@
+\documentclass[journal]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage[cmex10]{amsmath}
+\usepackage{amssymb,amsfonts,amsthm,mathtools,bm}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage[caption=false,font=footnotesize]{subfig}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,shapes.geometric,calc,decorations.pathmorphing}
+
+% Bibliography spacing — maximum compression
+\usepackage{etoolbox}
+\AtBeginEnvironment{thebibliography}{%
+    \scriptsize
+    \setlength{\itemsep}{-1pt}%
+    \setlength{\parskip}{0pt}%
+    \setlength{\parsep}{0pt}%
+    \setlength{\topsep}{0pt}%
+}
+\let\OLDthebibliography\thebibliography
+\renewcommand\thebibliography[1]{%
+  \OLDthebibliography{#1}%
+  \setlength{\parskip}{0pt}%
+  \setlength{\itemsep}{-0.5pt plus 0.3ex}%
+}
+
+% Float spacing — tighter
+\setlength{\textfloatsep}{5pt plus 1pt minus 1pt}
+\setlength{\floatsep}{4pt plus 1pt minus 1pt}
+\setlength{\intextsep}{4pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{3pt}
+\setlength{\belowcaptionskip}{0pt}
+
+% Section heading spacing — tighter
+\usepackage[compact]{titlesec}
+\titlespacing{\section}{0pt}{6pt plus 2pt minus 2pt}{3pt plus 1pt minus 1pt}
+\titlespacing{\subsection}{0pt}{5pt plus 1pt minus 1pt}{2pt plus 1pt minus 1pt}
+
+% Equation spacing — tighter
+\setlength{\abovedisplayskip}{5pt plus 1pt minus 2pt}
+\setlength{\belowdisplayskip}{5pt plus 1pt minus 2pt}
+\setlength{\abovedisplayshortskip}{2pt plus 1pt}
+\setlength{\belowdisplayshortskip}{2pt plus 1pt minus 1pt}
+
+% Custom commands
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\G}{\mathcal{G}}
+\newcommand{\D}{\mathcal{D}}
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\X}{\mathcal{X}}
+\newcommand{\softplus}{\operatorname{Softplus}}
+\newcommand{\Softmax}{\operatorname{Softmax}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\KL}{KL}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+
+
+\title{SDE-TGNN: Stochastic Differential Equation Dynamics with Fokker-Planck Uncertainty Propagation over Temporal Graph Neural Networks for Cross-Domain Intrusion Detection}
+
+\author{%
+\IEEEauthorblockN{Roger Nick Anaedevha,~\IEEEmembership{Member,~IEEE} and Alexander Gennadevich Trofimov} \\ 
+\IEEEauthorblockA{Department of Cybernetics, Institute of Cyber Intelligence Systems\\
+National Research Nuclear University MEPhI (Moscow Engineering Physics Institute)\\
+Moscow 115409, Russia\\
+Corresponding author: ar006@campus.mephi.ru}
+}
+
+
+\begin{document}
+\maketitle
+
+% ==============================================================
+% ABSTRACT
+% ==============================================================
+\begin{abstract}
+Network intrusion detection systems face persistent challenges in handling heterogeneous network domains, producing calibrated uncertainty estimates for risk-aware decision making, and providing formal robustness guarantees against adversarial evasion. This paper introduces SDE-TGNN, a deep learning framework that combines temporal graph neural networks with stochastic differential equations and Fokker-Planck-based analytical uncertainty propagation. The model learns continuous-time network state evolution through parameterized drift and diffusion functions, capturing both deterministic trends in traffic patterns and stochastic variability from queueing effects and measurement noise. Unlike Monte Carlo sampling approaches, the framework propagates the first two moments of the state distribution analytically via the Fokker-Planck equation, achieving efficient uncertainty quantification at quadratic cost in the state dimension. A multi-scale temporal fusion mechanism integrates SDE trajectories over short, medium, and long horizons through learned attention, enabling simultaneous detection of rapid anomalies and prolonged attack campaigns. The inherent stochasticity further enables certified adversarial robustness through randomized smoothing. Evaluated on six heterogeneous datasets covering cloud, industrial IoT, container, enterprise, IoT, and hybrid network domains totaling over 53 million samples, SDE-TGNN achieves a weighted average F1 score of 98.7\%, outperforming eight baselines spanning classical machine learning, deep learning, graph neural networks, continuous-depth models, and Bayesian approximations. The model produces calibrated uncertainty estimates with expected calibration error below 0.05 and certified accuracy of 76.2\% at perturbation radius 0.25. Cross-domain transfer experiments demonstrate 90.5\% average F1 on completely unseen domains without fine-tuning.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Network intrusion detection, stochastic differential equations, temporal graph neural networks, Fokker-Planck equation, uncertainty quantification, adversarial robustness, multi-domain learning
+\end{IEEEkeywords}
+
+% ==============================================================
+% I. INTRODUCTION
+% ==============================================================
+\section{Introduction}
+\label{sec:introduction}
+
+Network intrusion detection is a critical defense layer for modern infrastructure spanning cloud platforms, industrial IoT, containerized microservices, enterprise campuses, consumer IoT, and hybrid configurations. Each domain exhibits distinct traffic characteristics and attack surfaces, demanding detection frameworks that operate uniformly without domain-specific engineering.
+
+Deep learning has advanced intrusion detection through LSTMs~\cite{kim2016lstm}, graph neural networks~\cite{kipf2017semi,velivckovic2018graph}, and transformers~\cite{vaswani2017attention}. Temporal graph approaches have proven particularly effective: Cheng et al.~\cite{cheng2024kairos} demonstrated provenance-based detection at IEEE S\&P 2024, Khoury et al.~\cite{khoury2024jbeil} achieved 99.73\% AUC for lateral movement detection, and Guerra et al.~\cite{guerra2025graphids} reached 99.98\% PR-AUC via transformer-masked autoencoders. Despite these results, three fundamental limitations persist. First, single-domain models degrade sharply under cross-domain evaluation; Cantone et al.~\cite{cantone2024crossdataset} showed that within-dataset accuracy frequently collapses to near-random on different datasets. Second, standard networks produce overconfident predictions~\cite{guo2017calibration}, and uncertainty methods such as Monte Carlo dropout~\cite{gal2016dropout} and deep ensembles~\cite{lakshminarayanan2017simple} incur prohibitive overhead for real-time deployment. Third, empirical adversarial defenses~\cite{madry2018towards} provide no formal guarantees against evasion attacks.
+
+The root cause is that existing models treat time discretely and conflate deterministic trends governed by routing policies and attack logic with stochastic fluctuations from queueing effects and measurement noise. Our key insight is that all three challenges can be addressed through a single framework: stochastic differential equations decompose network dynamics into drift and diffusion, inducing a probability density whose evolution is governed by the Fokker-Planck equation~\cite{risken1989fpe}. Analytical moment propagation yields calibrated uncertainty at $O(d^2)$ cost, and the inherent stochasticity enables certified robustness via randomized smoothing~\cite{cohen2019certified}.
+
+We introduce SDE-TGNN, which models network traffic as an It\^{o} SDE over temporal graphs with multi-scale fusion and Fokker-Planck uncertainty propagation. The main contributions are:
+\begin{enumerate}
+\item A mathematically motivated architecture decomposing network dynamics into learned drift and diffusion functions justified by the continuous-time stochastic structure of network traffic;
+\item Analytical moment propagation from the Fokker-Planck equation with $O(d^2)$ uncertainty quantification and bounded growth guarantees, coupled with an uncertainty-aware training objective;
+\item Multi-scale temporal fusion integrating SDE trajectories over three horizons through learned attention, capturing sub-second anomalies to hour-long campaigns;
+\item Certified adversarial robustness via randomized smoothing leveraging SDE diffusion as implicit smoothness;
+\item Comprehensive evaluation on six datasets totaling over 53 million samples with cross-domain transfer demonstrating strong generalization without fine-tuning.
+\end{enumerate}
+
+The paper is organized as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:problem} formulates the problem. Section~\ref{sec:architecture} presents the architecture. Section~\ref{sec:fokker_planck} describes Fokker-Planck uncertainty propagation. Section~\ref{sec:robustness} details certified robustness. Section~\ref{sec:experiments} describes experimental setup. Section~\ref{sec:results} presents results. Section~\ref{sec:discussion} discusses implications. Section~\ref{sec:conclusion} concludes.
+
+
+% ==============================================================
+% II. RELATED WORK
+% ==============================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Deep Learning and Temporal Graphs for Intrusion Detection}
+
+Recurrent architectures initiated deep learning for intrusion detection~\cite{kim2016lstm}, followed by transformer variants achieving 99.40\% accuracy on CIC-IoT-2023~\cite{he2024transformer}. Graph neural networks offer natural topology modeling through convolutional~\cite{kipf2017semi}, attention-based~\cite{velivckovic2018graph}, and inductive~\cite{hamilton2017inductive} mechanisms. In temporal graph security, Cheng et al.~\cite{cheng2024kairos} introduced KAIROS at IEEE S\&P 2024 for provenance-based detection, Khoury et al.~\cite{khoury2024jbeil} proposed Jbeil achieving 99.73\% AUC, Jia et al.~\cite{jia2024magic} presented MAGIC at USENIX Security 2024 for APT detection, and Van Langendonck et al.~\cite{vanlangendonck2024pptgnn} showed a 10.38\% accuracy improvement from self-supervised pre-training. However, these approaches rely on discrete-time formulations sensitive to sampling rates and lacking principled uncertainty quantification.
+
+Our prior work provides two baselines: stochastic multimodal transformers~\cite{anaedevha2026stochastic} achieving competitive detection with Monte Carlo dropout uncertainty (CIC-IDS2018: 98.2\%, UNSW-NB15: 97.4\%), and selective state-space models for poisoning resilience~\cite{anaedevha2026mambashield}. The present work advances beyond both through continuous-time stochastic dynamics, analytical uncertainty propagation, and certified robustness.
+
+\subsection{Neural Stochastic Differential Equations}
+
+Neural ODEs~\cite{chen2018neural} parameterize continuous-depth hidden dynamics with memory-efficient adjoint training. Neural SDEs extend this with diffusion terms: Kong et al.~\cite{kong2020sdenet} introduced SDE-Net for uncertainty at ICML 2020, Li et al.~\cite{li2020scalable} developed scalable SDE gradients, Oh et al.~\cite{oh2024stable} proposed stable neural SDEs for irregular time series at ICLR 2024, and Bartosh et al.~\cite{bartosh2025simulation} achieved simulation-free $O(1)$ training at ICML 2025. At the graph--SDE intersection, Bergna et al.~\cite{bergna2023graph} proposed graph neural SDEs, Lin et al.~\cite{lin2024gnsd} introduced GNSD with $Q$-Wiener processes at ICML 2024, and Calvo-Ordo\~{n}ez et al.~\cite{calvo2025lgnsde} presented LGNSDE at ICLR 2025 (Spotlight), combining Brownian motion for aleatoric with Bayesian mechanisms for epistemic uncertainty. None addresses intrusion detection with analytical Fokker-Planck moment propagation, our central contribution.
+
+\subsection{Uncertainty Quantification in Deep Learning}
+
+Bayesian neural networks~\cite{mackay1992bayesian} provide principled uncertainty but require intractable inference. Practical approximations include variational inference~\cite{kingma2014auto}, Monte Carlo dropout~\cite{gal2016dropout}, and deep ensembles~\cite{lakshminarayanan2017simple}. Recent advances include NeurIPS 2024 benchmarking of 19 methods~\cite{mucsanyi2024benchmarking}, energy-based epistemic uncertainty for GNNs~\cite{fuchsgruber2024energy} (NeurIPS 2024 Spotlight), analytical aleatoric propagation in IEEE TNNLS 2025~\cite{jungmann2025analytical}, and factor graph formulations at AAAI 2024~\cite{titensky2024factor}. Our Fokker-Planck approach extends moment propagation rooted in Bayesian filtering~\cite{sarkka2013bayesian} to learned stochastic dynamics on temporal graphs, where uncertainty arises from the SDE dynamics themselves rather than assumed input perturbations.
+
+\subsection{Adversarial Robustness for Graph Networks}
+
+Certified defenses rely on convex relaxation~\cite{wong2018provable} or randomized smoothing~\cite{cohen2019certified}. Gosch et al.~\cite{gosch2024provable} received a NeurIPS 2024 Best Paper for deterministic GNN certificates against poisoning. Scholten et al.~\cite{scholten2023randomized} proposed randomized message-interception smoothing at ICML 2023, and Lyu et al.~\cite{lyu2024adaptive} developed adaptive smoothing at NeurIPS 2024. In intrusion detection, Wang et al.~\cite{wang2023manda} achieved 98.41\% TPR for adversarial detection in IEEE TDSC. Our work shows that SDE diffusion stochasticity naturally enables randomized smoothing certification for graph-structured network traffic within a unified framework.
+
+
+% ==============================================================
+% III. PROBLEM FORMULATION
+% ==============================================================
+\section{Problem Formulation}
+\label{sec:problem}
+
+This section establishes the mathematical framework for multi-domain intrusion detection, defining the data representation, the detection objective, and the mathematical rationale for the SDE approach.
+
+\subsection{Network Traffic as Temporal Graphs}
+
+\begin{definition}[Temporal Network Graph]
+\label{def:temporal_graph}
+A computer network at time $t$ is represented as a temporal graph $\G_t = (\V_t, \mathcal{E}_t, \X_t)$, where $\V_t$ denotes the set of $n_t$ network entities such as hosts, services, or devices; $\mathcal{E}_t \subseteq \V_t \times \V_t$ denotes the set of directed communication edges observed at time $t$; and $\X_t \in \R^{n_t \times d_{\mathrm{in}}}$ denotes the node feature matrix, with each row $\mathbf{x}_i(t) \in \R^{d_{\mathrm{in}}}$ encoding traffic statistics, protocol information, and payload characteristics for entity $i$. The neighbor set of node $i$ at time $t$ is $\mathcal{N}_i(t) = \{j : (j, i) \in \mathcal{E}_t\}$.
+\end{definition}
+
+We observe a sequence of graph snapshots $\{\G_{t_1}, \G_{t_2}, \ldots, \G_{t_T}\}$ sampled at discrete times from a continuously evolving network. The observation timestamps need not be uniformly spaced, and the number of active entities $n_t$ may vary over time as hosts connect and disconnect. With this graph-structured representation in place, we now formulate the detection task as a tripartite objective over multiple heterogeneous domains.
+
+
+\subsection{Multi-Domain Intrusion Detection Objective}
+
+\textit{Given:} A collection of $K = 6$ heterogeneous network domains $\{\D_1, \ldots, \D_6\}$ corresponding to cloud, industrial IoT, container, enterprise, consumer IoT, and hybrid environments. Each domain $\D_k$ is characterized by a joint distribution $(\G, y) \sim \D_k$ with domain-specific feature dimensions ($d_{\mathrm{in}}$ ranging from 46 to 81), attack type vocabularies ($C_k$ ranging from 2 to 34 classes), and temporal dynamics. For each observation at time $t_i$, a ground-truth label $y_i \in \{0, 1, \ldots, C_k - 1\}$ is provided, where $y_i = 0$ denotes benign traffic and $y_i > 0$ indicates a specific attack class.
+
+\textit{Objective:} Learn a single parameterized model $f_\theta : \G \to \R^C$ with shared parameters $\theta$ that simultaneously satisfies three requirements.
+
+\textit{(O1) Detection accuracy:} Minimize the aggregate risk across all domains,
+\begin{equation}
+\theta^* = \argmin_\theta \sum_{k=1}^{K} w_k \, \E_{(\G, y) \sim \D_k}\!\Big[\mathcal{L}_{\mathrm{CE}}\big(f_\theta(\G),\, y\big)\Big],
+\label{eq:objective}
+\end{equation}
+where $\mathcal{L}_{\mathrm{CE}}$ denotes the cross-entropy loss and $w_k > 0$ are domain importance weights satisfying $\sum_{k=1}^K w_k = 1$.
+
+\textit{(O2) Calibrated uncertainty:} For each prediction, produce a confidence estimate $p(\hat{y} \mid \G)$ such that the expected calibration error,
+\begin{equation}
+\mathrm{ECE} = \sum_{b=1}^{B} \frac{|S_b|}{N}\, \big|\mathrm{acc}(S_b) - \mathrm{conf}(S_b)\big|,
+\label{eq:ece}
+\end{equation}
+is minimized, where $S_b$ denotes the set of samples in the $b$-th confidence bin, $N$ is the total number of samples, and $B$ is the number of bins.
+
+\textit{(O3) Certified robustness:} For a given noise level $\sigma_{\mathrm{cert}} > 0$, guarantee that the predicted class is invariant within an $\ell_2$ ball of certified radius $R > 0$ around each input.
+
+No domain-specific architectural modifications or fine-tuning are permitted. The model must discover representations that transfer across heterogeneous network environments. Satisfying these three objectives simultaneously requires a modeling framework that can jointly produce predictions, calibrated confidence estimates, and certified guarantees from a single forward pass, which motivates the stochastic differential equation formulation described next.
+
+
+\subsection{Mathematical Motivation for the SDE Approach}
+
+The choice of stochastic differential equations as the modeling framework is grounded in three structural properties of network traffic processes.
+
+First, network states evolve continuously in time. Between observation timestamps $t_i$ and $t_{i+1}$, packets traverse queues, TCP windows adjust, and connections open and close. A model that parameterizes the instantaneous rate of change captures this continuous structure and is naturally invariant to the sampling rate, which differs across the six evaluation domains.
+
+Second, network dynamics admit a natural decomposition into deterministic and stochastic components. The deterministic component, governed by routing policies, protocol state machines, and attack logic, is modeled by a drift function. The stochastic component, arising from queueing variability, user fluctuations, and measurement noise, is modeled by a diffusion function. This decomposition corresponds precisely to the It\^{o} SDE~\cite{oksendal2003sde}:
+\begin{equation}
+d\mathbf{h}_t = \underbrace{f_\theta(\mathbf{h}_t, \G_t, t)}_{\text{drift}}\,dt + \underbrace{\sigma_\phi(\mathbf{h}_t, t)}_{\text{diffusion}}\,d\mathbf{W}_t,
+\label{eq:sde_motivation}
+\end{equation}
+where $\mathbf{h}_t \in \R^d$ denotes the latent network state, $f_\theta : \R^d \times \G \times \R_{\ge 0} \to \R^d$ is the drift function parameterized by $\theta$, $\sigma_\phi : \R^d \times \R_{\ge 0} \to \R^{d \times d}$ is the diffusion function parameterized by $\phi$, and $\mathbf{W}_t \in \R^d$ is a standard $d$-dimensional Wiener process (Brownian motion). The existence and uniqueness of solutions follow from Lipschitz continuity of $f_\theta$ and linear growth of $\sigma_\phi$~\cite{oksendal2003sde}, which are enforced through architectural constraints described in Section~\ref{sec:architecture}.
+
+Third, network attacks exhibit temporal signatures spanning multiple time scales. Port scans manifest over sub-second intervals, brute-force attempts unfold over minutes, and advanced persistent threat reconnaissance extends over hours or days. By integrating the SDE over multiple horizons and combining the resulting representations through learned attention, SDE-TGNN captures the full spectrum of attack durations without sacrificing resolution at any scale.
+
+The SDE formulation further enables the Fokker-Planck connection to uncertainty quantification. When $\mathbf{h}_t$ follows~\eqref{eq:sde_motivation}, the probability density $p(\mathbf{h}, t)$ over the state space satisfies the Fokker-Planck partial differential equation~\cite{risken1989fpe}:
+\begin{equation}
+\frac{\partial p}{\partial t} = -\nabla \cdot \!\big[f_\theta \, p\big] + \frac{1}{2}\,\Tr\!\left(\sigma_\phi \sigma_\phi^\top \nabla \nabla^\top p\right),
+\label{eq:fp_intro}
+\end{equation}
+where the first right-hand term describes advection of probability mass by the drift and the second describes diffusion of probability mass by the noise. Propagating the moments of this density, rather than solving the full PDE, yields efficient uncertainty quantification as detailed in Section~\ref{sec:fokker_planck}. Having established the mathematical foundations, we now present the concrete architecture that realizes this framework.
+
+
+% ==============================================================
+% IV. SDE-TGNN ARCHITECTURE
+% ==============================================================
+\section{SDE-TGNN Architecture}
+\label{sec:architecture}
+
+Figure~\ref{fig:architecture} illustrates the SDE-TGNN architecture. The pipeline consists of four stages: feature embedding, graph attention encoding, multi-scale SDE integration, and Fokker-Planck fusion with classification. This section describes each stage and provides stability guarantees for the learned dynamics.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.75\textwidth]{figuresBA/fig_architecture.pdf}
+\caption{SDE-TGNN architecture. Input features are embedded and processed through multi-head graph attention layers. The projected state is integrated at three temporal scales via parallel SDE solvers sharing drift and diffusion networks. Fokker-Planck moment propagation (dashed path) provides analytical uncertainty estimates $(\boldsymbol{\mu}_T, \boldsymbol{\Sigma}_T)$ that are injected into the classification head alongside the fused multi-scale representation.}
+\label{fig:architecture}
+\end{figure*}
+
+
+\subsection{Feature Embedding}
+
+The six evaluation datasets have heterogeneous raw feature dimensions $d_{\mathrm{in}}$ ranging from 46 to 81. A learned linear embedding followed by layer normalization projects all inputs into a common representation space:
+\begin{equation}
+\mathbf{H}^{(0)}_t = \mathrm{LayerNorm}\!\left(\X_t \, \mathbf{W}_{\mathrm{emb}} + \mathbf{b}_{\mathrm{emb}}\right) \in \R^{n \times D},
+\label{eq:embedding}
+\end{equation}
+where $\mathbf{W}_{\mathrm{emb}} \in \R^{d_{\mathrm{in}} \times D}$ is the embedding weight matrix, $\mathbf{b}_{\mathrm{emb}} \in \R^D$ is the bias vector, and $D = 256$ is the hidden dimension. Layer normalization ensures stable training across domains whose feature scales may differ by orders of magnitude. These node-level embeddings must next be contextualized with respect to the network topology, which is accomplished by the graph attention encoder.
+
+
+\subsection{Temporal Graph Attention Encoder}
+
+We apply $L = 4$ layers of multi-head graph attention~\cite{velivckovic2018graph} to capture topology-dependent interactions among network entities. At layer $\ell \in \{0, \ldots, L{-}1\}$, the representation of node $i$ is updated as
+\begin{equation}
+\mathbf{h}_i^{(\ell+1)} = \bigoplus_{k=1}^{K_h} \sigma\!\left(\sum_{j \in \mathcal{N}_i(t)} \alpha_{ij}^{(\ell,k)} \, \mathbf{W}_k^{(\ell)} \, \mathbf{h}_j^{(\ell)}\right),
+\label{eq:gat}
+\end{equation}
+where $K_h = 8$ denotes the number of attention heads, $\bigoplus$ denotes concatenation across heads (replaced by averaging in the final layer), $\sigma$ is the ELU activation function, and $\mathbf{W}_k^{(\ell)} \in \R^{D/K_h \times D/K_h}$ is the per-head linear projection. The attention coefficients $\alpha_{ij}^{(\ell,k)}$ are computed via
+\begin{equation}
+\resizebox{0.91\columnwidth}{!}{$\displaystyle
+\alpha_{ij}^{(\ell,k)} = \frac{\exp\!\big(\mathrm{LeakyReLU}\big(\mathbf{a}_k^{(\ell)\top}[\mathbf{W}_k^{(\ell)}\mathbf{h}_i^{(\ell)} \,\|\, \mathbf{W}_k^{(\ell)}\mathbf{h}_j^{(\ell)}]\big)\big)}{\sum_{j' \in \mathcal{N}_i(t)} \exp\!\big(\mathrm{LeakyReLU}\big(\mathbf{a}_k^{(\ell)\top}[\mathbf{W}_k^{(\ell)}\mathbf{h}_i^{(\ell)} \,\|\, \mathbf{W}_k^{(\ell)}\mathbf{h}_{j'}^{(\ell)}]\big)\big)}$}
+\label{eq:attention_coeff}
+\end{equation}
+where $\mathbf{a}_k^{(\ell)} \in \R^{2D/K_h}$ is a learnable alignment vector and LeakyReLU has a negative slope of 0.2. The graph-level state is obtained by mean pooling over all nodes followed by linear projection to the SDE state space: $\mathbf{h}_0 = \mathrm{MeanPool}(\mathbf{H}_t^{(L)})\,\mathbf{W}_{\mathrm{proj}} \in \R^d$, where $\mathbf{W}_{\mathrm{proj}} \in \R^{D \times d}$ and $d = 64$ is the SDE state dimension. The reduction from $D = 256$ to $d = 64$ is critical for tractability of the covariance propagation described in Section~\ref{sec:fokker_planck}, which scales as $O(d^2)$. This compressed graph-level state $\mathbf{h}_0$ serves as the initial condition for the stochastic dynamics that model continuous-time evolution of the network state.
+
+
+\subsection{Stochastic Differential Equation Dynamics}
+
+The continuous-time evolution of the graph-level state $\mathbf{h}_t \in \R^d$ follows the It\^{o} SDE~\cite{oksendal2003sde} introduced in~\eqref{eq:sde_motivation}. The drift function is parameterized as
+\begin{equation}
+f_\theta(\mathbf{h}_t, \G_t, t) = \mathrm{MLP}_{\mathrm{drift}}\!\big([\mathbf{h}_t \,\|\, \phi(\G_t) \,\|\, \psi(t)]\big),
+\label{eq:drift}
+\end{equation}
+where $[\cdot \| \cdot]$ denotes concatenation. The term $\phi(\G_t) \in \R^{d_g}$ extracts graph-level summary statistics---including edge density, mean degree, and clustering coefficient~\cite{watts1998collective}---from the current snapshot, providing the drift with a compact characterization of the macroscopic network topology so that the model can condition its dynamics on structural changes such as sudden connectivity spikes that accompany distributed attacks. The term $\psi(t) \in \R^{2m}$ is a sinusoidal time encoding inspired by the positional encoding of Vaswani et al.~\cite{vaswani2017attention}, defined as $\psi(t) = [\sin(\omega_1 t), \cos(\omega_1 t), \ldots, \sin(\omega_m t), \cos(\omega_m t)]$ with $m$ learnable frequency parameters; this embeds the continuous time coordinate into a high-dimensional periodic representation, enabling the drift to capture recurring temporal patterns such as diurnal traffic cycles and periodic scanning behavior. The MLP consists of two hidden layers of width 128 with SiLU activations and spectral normalization to enforce the Lipschitz condition required for well-posedness~\cite{oksendal2003sde}.
+
+The diffusion function models state-dependent noise intensity:
+\begin{equation}
+\sigma_\phi(\mathbf{h}_t, t) = \softplus\!\big(\mathrm{MLP}_{\mathrm{diff}}([\mathbf{h}_t \,\|\, \psi(t)])\big) \cdot \mathbf{I}_d,
+\label{eq:diffusion}
+\end{equation}
+where $\softplus(x) = \log(1 + e^x)$ ensures strict positivity of the diffusion coefficients and $\mathbf{I}_d$ denotes the $d \times d$ identity matrix. The diagonal structure yields $\sigma_\phi \sigma_\phi^\top = \sigma_\phi^2 \, \mathbf{I}_d$, reducing storage from $O(d^2)$ to $O(d)$ while maintaining sufficient expressiveness for isotropic noise modeling.
+
+Numerical integration employs the Euler--Maruyama scheme~\cite{kloeden1992numerical} with step size $\Delta t = 0.01$:
+\begin{equation}
+\mathbf{h}_{t+\Delta t} = \mathbf{h}_t + f_\theta(\mathbf{h}_t, \G_t, t)\,\Delta t + \sigma_\phi(\mathbf{h}_t, t)\,\sqrt{\Delta t}\;\boldsymbol{\epsilon}_t,
+\label{eq:euler_maruyama}
+\end{equation}
+where $\boldsymbol{\epsilon}_t \sim \N(\mathbf{0}, \mathbf{I}_d)$ is an independent standard Gaussian sample at each step and the factor $\sqrt{\Delta t}$ arises from the variance scaling property of the Wiener process~\cite{oksendal2003sde}. Because network attacks manifest at different time scales, from sub-second port scans to hour-long campaigns, the SDE must be integrated over multiple horizons, which motivates the multi-scale fusion mechanism described next.
+
+
+\subsection{Multi-Scale Temporal Fusion}
+
+Network attacks occupy distinct frequency bands in the temporal spectrum. We integrate the SDE from the same initial condition $\mathbf{h}_0$ over three horizons $\tau_s < \tau_m < \tau_l$ set to 0.5\,s, 2\,s, and 10\,s:
+\begin{equation}
+\mathbf{h}_{\tau_k}^{(k)} = \mathbf{h}_0 + \int_0^{\tau_k}\! f_\theta(\mathbf{h}_s, \G_s, s)\,ds + \int_0^{\tau_k}\! \sigma_\phi(\mathbf{h}_s, s)\,d\mathbf{W}_s,
+\label{eq:multiscale}
+\end{equation}
+where $k \in \{s, m, l\}$ indexes the short, medium, and long temporal scales. The three integrations share the drift and diffusion networks but produce complementary representations because longer horizons accumulate more information from both deterministic dynamics and stochastic fluctuations.
+
+Fusion employs a self-attention mechanism. Defining the concatenated context $\mathbf{c} = [\mathbf{h}_{\tau_s}^{(s)} \,\|\, \mathbf{h}_{\tau_m}^{(m)} \,\|\, \mathbf{h}_{\tau_l}^{(l)}] \in \R^{3d}$, the scale-importance weights are
+\begin{equation}
+\boldsymbol{\beta} = \Softmax\!\left(\frac{\mathbf{W}_Q \mathbf{c} \cdot (\mathbf{W}_K \mathbf{c})^\top}{\sqrt{3d}}\right),
+\label{eq:attention_weights}
+\end{equation}
+where $\mathbf{W}_Q, \mathbf{W}_K \in \R^{3 \times 3d}$ are learnable query and key projections. The fused state is $\mathbf{h}_{\mathrm{fused}} = \sum_{k} \beta_k \, \mathbf{h}_{\tau_k}^{(k)}$. This mechanism enables adaptive emphasis: DDoS attacks receive higher weight on the short-term scale, while APT campaigns weight the long-term scale. Integrating the SDE over these extended horizons raises the question of whether the learned dynamics remain numerically stable, which we address formally below.
+
+
+\subsection{Stability Analysis}
+
+The following result guarantees that the learned dynamics remain well-behaved, an essential property for reliable deployment.
+
+\begin{assumption}[Lipschitz Drift]
+\label{ass:lipschitz}
+There exists a constant $L_f > 0$ such that $\|f_\theta(\mathbf{h}_1, \G, t) - f_\theta(\mathbf{h}_2, \G, t)\| \le L_f \|\mathbf{h}_1 - \mathbf{h}_2\|$ for all $\mathbf{h}_1, \mathbf{h}_2 \in \R^d$ and $t \ge 0$.
+\end{assumption}
+
+\begin{assumption}[Bounded Diffusion]
+\label{ass:diffusion}
+There exists a constant $C_\sigma > 0$ such that $\|\sigma_\phi(\mathbf{h}, t)\|_F \le C_\sigma$ for all $\mathbf{h} \in \R^d$ and $t \in [0, T]$, where $\|\cdot\|_F$ denotes the Frobenius norm and $T$ is the maximum integration horizon.
+\end{assumption}
+
+Assumption~\ref{ass:lipschitz} is enforced through spectral normalization of the drift network, and Assumption~\ref{ass:diffusion} follows from the bounded range of the softplus parameterization combined with the diagonal diffusion structure.
+
+\begin{theorem}[Moment Stability]
+\label{thm:stability}
+Under Assumptions~\ref{ass:lipschitz} and~\ref{ass:diffusion}, the state mean $\boldsymbol{\mu}_t = \E[\mathbf{h}_t]$ and covariance trace satisfy
+\begin{align}
+\|\boldsymbol{\mu}_t - \boldsymbol{\mu}_0\| &\le L_f \, T \, \|\boldsymbol{\mu}_0\|, \label{eq:mean_bound} \\
+\Tr\!\big(\mathrm{Cov}[\mathbf{h}_t]\big) &\le C_\sigma^2 \, T \, \exp(2 L_f T), \label{eq:cov_bound}
+\end{align}
+ensuring bounded mean deviation and bounded uncertainty growth over the interval $[0, T]$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Taking expectations of~\eqref{eq:sde_motivation} and applying the Lipschitz bound on $f_\theta$ yields~\eqref{eq:mean_bound}. For the covariance, the bounded diffusion gives the integral inequality $\Tr(\mathrm{Cov}[\mathbf{h}_t]) \le C_\sigma^2 T + 2 L_f \int_0^T \Tr(\mathrm{Cov}[\mathbf{h}_s])\,ds$. Applying Gr\"{o}nwall's inequality to this integral inequality produces the exponential bound~\eqref{eq:cov_bound}. \qed
+\end{proof}
+
+The exponential dependence on the product $L_f T$ underscores the importance of controlling the Lipschitz constant through spectral normalization, particularly for the longer integration horizons. With the architecture and its stability properties established, we now derive the analytical moment propagation equations that extract calibrated uncertainty from the SDE dynamics without Monte Carlo sampling.
+
+
+% ==============================================================
+% V. FOKKER-PLANCK UNCERTAINTY PROPAGATION
+% ==============================================================
+\section{Fokker-Planck Uncertainty Propagation}
+\label{sec:fokker_planck}
+
+This section derives analytical moment propagation equations from the Fokker-Planck formulation and describes the uncertainty-aware training objective.
+
+\subsection{From the Fokker-Planck Equation to Moment ODEs}
+
+The Fokker-Planck equation~\eqref{eq:fp_intro} describes the evolution of the full probability density $p(\mathbf{h}, t)$, but solving this PDE is intractable in high dimensions because it requires discretization over all of $\R^d$. Under the assumption that the density remains approximately Gaussian, which is exact for linear drift and a reasonable approximation for moderately nonlinear dynamics, the density is fully characterized by its first two moments: the mean $\boldsymbol{\mu}_t = \E[\mathbf{h}_t] \in \R^d$ and the covariance $\boldsymbol{\Sigma}_t = \mathrm{Cov}[\mathbf{h}_t] \in \R^{d \times d}$.
+
+Linearizing the drift around the current mean via a first-order Taylor expansion yields coupled ordinary differential equations for the moments:
+\begin{align}
+\frac{d\boldsymbol{\mu}_t}{dt} &= f_\theta(\boldsymbol{\mu}_t, \G_t, t), \label{eq:mean_ode} \\
+\frac{d\boldsymbol{\Sigma}_t}{dt} &= \mathbf{J}_{f_\theta}\! \boldsymbol{\Sigma}_t + \boldsymbol{\Sigma}_t \mathbf{J}_{f_\theta}^\top + \mathbf{Q}_t, \label{eq:cov_ode}
+\end{align}
+where $\mathbf{J}_{f_\theta} = \partial f_\theta / \partial \mathbf{h}\big|_{\mathbf{h}=\boldsymbol{\mu}_t} \in \R^{d \times d}$ is the Jacobian of the drift evaluated at the mean, computed via automatic differentiation, and $\mathbf{Q}_t = \sigma_\phi(\boldsymbol{\mu}_t, t)^2 \mathbf{I}_d \in \R^{d \times d}$ is the instantaneous noise covariance arising from the diagonal diffusion structure.
+
+Equation~\eqref{eq:mean_ode} is the deterministic neural ODE for the expected trajectory. Equation~\eqref{eq:cov_ode} is a continuous-time Lyapunov equation that propagates state uncertainty through the nonlinear dynamics. The Jacobian term $\mathbf{J}_{f_\theta} \boldsymbol{\Sigma}_t + \boldsymbol{\Sigma}_t \mathbf{J}_{f_\theta}^\top$ describes how the drift stretches and rotates the uncertainty ellipsoid, while $\mathbf{Q}_t$ adds uncertainty from the diffusion process. The total cost is $O(d^2)$ per step for the covariance update, far cheaper than Monte Carlo methods requiring $O(Nd)$ cost with $N$ samples and $O(1/\sqrt{N})$ convergence.
+
+This moment closure approach is well established in stochastic filtering theory~\cite{sarkka2013bayesian} and offers three key advantages over alternatives. Compared to Monte Carlo dropout, it requires a single deterministic forward pass rather than $N$ stochastic passes. Compared to deep ensembles, it uses a single model without additional memory overhead from storing $M$ independent models. Compared to variational inference, it directly tracks the state distribution induced by the learned SDE dynamics rather than optimizing a potentially loose lower bound. Since the architecture integrates the SDE at three temporal scales, the propagated moments must be fused across scales while preserving both within-scale and between-scale uncertainty, which we describe next.
+
+
+\subsection{Uncertainty Fusion Across Temporal Scales}
+
+The fused uncertainty across the three temporal scales accounts for both within-scale and between-scale variability:
+\begin{equation}
+\boldsymbol{\Sigma}_T = \sum_k \beta_k^2 \boldsymbol{\Sigma}_{\tau_k}^{(k)} + \sum_k \beta_k \big(\boldsymbol{\mu}_{\tau_k}^{(k)} - \boldsymbol{\mu}_T\big)\big(\boldsymbol{\mu}_{\tau_k}^{(k)} - \boldsymbol{\mu}_T\big)^\top,
+\label{eq:fused_cov}
+\end{equation}
+where $\boldsymbol{\mu}_T = \sum_k \beta_k \boldsymbol{\mu}_{\tau_k}^{(k)}$ is the fused mean and $\beta_k$ are the learned attention weights from~\eqref{eq:attention_weights}. The first term captures within-scale uncertainty propagated by the Fokker-Planck equations, and the second captures inter-scale disagreement as an additional epistemic uncertainty source. This decomposition follows from the law of total variance applied to the mixture of scale-conditional distributions.
+
+The classification head receives the concatenation $[\mathbf{h}_{\mathrm{fused}} \,\|\, \boldsymbol{\mu}_T \,\|\, \diag(\boldsymbol{\Sigma}_T)]$ to produce logits $\mathbf{z} \in \R^C$, enabling the classifier to modulate predictions based on propagated uncertainty. To ensure that these uncertainty estimates are well calibrated rather than merely present, the training objective must explicitly couple accuracy with calibration quality.
+
+
+\subsection{Uncertainty-Aware Training Loss}
+
+The training loss couples classification accuracy with uncertainty regularization:
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}}\!\big(\mathbf{z}(\boldsymbol{\mu}_T), y\big) + \frac{\lambda}{2}\, \Tr\!\big(\mathbf{H}_{\mathbf{z}}\, \boldsymbol{\Sigma}_T\big),
+\label{eq:loss}
+\end{equation}
+where $\mathbf{H}_{\mathbf{z}} = \partial^2 \mathcal{L}_{\mathrm{CE}} / \partial \mathbf{h}^2 \big|_{\boldsymbol{\mu}_T} \in \R^{d \times d}$ is the Hessian of the classification loss with respect to the state, evaluated at the mean, and $\lambda = 0.1$ balances accuracy and uncertainty minimization. The trace term $\Tr(\mathbf{H}_{\mathbf{z}} \boldsymbol{\Sigma}_T)$ approximates the expected loss under the state distribution to second order, penalizing configurations where the loss landscape is highly curved along directions of large state uncertainty. The complete inference procedure, integrating the SDE and propagating moments simultaneously across all three temporal scales, is summarized in the following algorithm.
+
+
+\subsection{Inference Algorithm}
+
+Algorithm~\ref{alg:inference} summarizes the complete forward pass with simultaneous SDE integration and Fokker-Planck moment propagation.
+
+\begin{algorithm}[!t]
+\caption{SDE-TGNN Forward Pass with Fokker-Planck Uncertainty}
+\label{alg:inference}
+\begin{algorithmic}[1]
+\REQUIRE Temporal graph $\G_t$, scales $\{\tau_s, \tau_m, \tau_l\}$, step $\Delta t$
+\ENSURE Prediction $\hat{y}$, uncertainty $(\boldsymbol{\mu}_T, \boldsymbol{\Sigma}_T)$
+\STATE $\mathbf{H}^{(0)} \leftarrow \mathrm{LayerNorm}(\X_t \mathbf{W}_{\mathrm{emb}} + \mathbf{b}_{\mathrm{emb}})$
+\STATE $\mathbf{H}^{(L)} \leftarrow \mathrm{GAT}^{(L)}(\mathbf{H}^{(0)}, \mathcal{E}_t)$
+\STATE $\mathbf{h}_0 \leftarrow \mathrm{MeanPool}(\mathbf{H}^{(L)})\,\mathbf{W}_{\mathrm{proj}}$
+\STATE $\boldsymbol{\mu}_0 \leftarrow \mathbf{h}_0$;\quad $\boldsymbol{\Sigma}_0 \leftarrow \mathbf{0}_{d \times d}$
+\FOR{$k \in \{s, m, l\}$ \textbf{in parallel}}
+    \STATE $\boldsymbol{\mu} \leftarrow \boldsymbol{\mu}_0$;\quad $\boldsymbol{\Sigma} \leftarrow \boldsymbol{\Sigma}_0$
+    \FOR{$t = 0$ \TO $\tau_k$ \textbf{step} $\Delta t$}
+        \STATE $\mathbf{J} \leftarrow \partial f_\theta / \partial \mathbf{h}\big|_{\boldsymbol{\mu}}$ \hfill \{Jacobian via autodiff\}
+        \STATE $\mathbf{Q} \leftarrow \sigma_\phi(\boldsymbol{\mu}, t)^2 \, \mathbf{I}_d$
+        \STATE $\boldsymbol{\mu} \leftarrow \boldsymbol{\mu} + f_\theta(\boldsymbol{\mu}, \G_t, t)\,\Delta t$
+        \STATE $\boldsymbol{\Sigma} \leftarrow \boldsymbol{\Sigma} + (\mathbf{J}\boldsymbol{\Sigma} + \boldsymbol{\Sigma}\mathbf{J}^\top + \mathbf{Q})\,\Delta t$
+    \ENDFOR
+    \STATE $\boldsymbol{\mu}_{\tau_k} \leftarrow \boldsymbol{\mu}$;\quad $\boldsymbol{\Sigma}_{\tau_k} \leftarrow \boldsymbol{\Sigma}$
+\ENDFOR
+\STATE $\boldsymbol{\beta} \leftarrow \Softmax(\mathbf{W}_Q \mathbf{c} \cdot (\mathbf{W}_K \mathbf{c})^\top / \sqrt{3d})$
+\STATE $\boldsymbol{\mu}_T \leftarrow \sum_k \beta_k \boldsymbol{\mu}_{\tau_k}$;\quad Compute $\boldsymbol{\Sigma}_T$ via~\eqref{eq:fused_cov}
+\STATE $\mathbf{z} \leftarrow \mathrm{MLP}_{\mathrm{cls}}([\mathbf{h}_{\mathrm{fused}} \,\|\, \boldsymbol{\mu}_T \,\|\, \diag(\boldsymbol{\Sigma}_T)])$
+\RETURN $\hat{y} = \argmax(\mathbf{z})$, $(\boldsymbol{\mu}_T, \boldsymbol{\Sigma}_T)$
+\end{algorithmic}
+\end{algorithm}
+
+Beyond producing calibrated uncertainty, the inherent stochasticity of the SDE dynamics also opens a path to formal adversarial robustness guarantees, which we derive in the next section.
+
+
+% ==============================================================
+% VI. CERTIFIED ADVERSARIAL ROBUSTNESS
+% ==============================================================
+\section{Certified Adversarial Robustness}
+\label{sec:robustness}
+
+The inherent stochasticity of the SDE dynamics enables formal defense guarantees through randomized smoothing~\cite{cohen2019certified}. This section describes how the SDE framework integrates naturally with certification.
+
+\subsection{Randomized Smoothing Framework}
+
+Given the base classifier $f$ and isotropic Gaussian noise $\boldsymbol{\eta} \sim \N(\mathbf{0}, \sigma_{\mathrm{cert}}^2 \mathbf{I})$, the smoothed classifier is defined as $g(\mathbf{x}) = \argmax_c \Pr[f(\mathbf{x} + \boldsymbol{\eta}) = c]$.
+
+\begin{theorem}[Certified Radius~\cite{cohen2019certified}]
+\label{thm:certified}
+Let $c_A$ denote the most probable class under the smoothed classifier $g$, with probability $p_A = \Pr[f(\mathbf{x} + \boldsymbol{\eta}) = c_A]$, and let $p_B = \max_{c \neq c_A} \Pr[f(\mathbf{x} + \boldsymbol{\eta}) = c]$ denote the runner-up probability. If $p_A > p_B$, then $g$ is constant within an $\ell_2$ ball of radius
+\begin{equation}
+R = \frac{\sigma_{\mathrm{cert}}}{2}\big(\Phi^{-1}(p_A) - \Phi^{-1}(p_B)\big),
+\label{eq:certified_radius}
+\end{equation}
+where $\Phi^{-1}$ is the inverse of the standard normal cumulative distribution function.
+\end{theorem}
+
+The certified radius grows with the gap between $p_A$ and $p_B$, making it essential that the base classifier produces well-separated class probabilities under Gaussian perturbation, a property that arises naturally from the SDE training dynamics as described below.
+
+\subsection{Integration with SDE-TGNN}
+
+The SDE diffusion $\sigma_\phi$ provides inherent stochasticity that acts as implicit regularization during training, making the classifier naturally amenable to randomized smoothing. For certification at inference time, we draw $N = 10{,}000$ SDE trajectories from perturbed initial states $\mathbf{h}_0^{(i)} \sim \N(\bar{\mathbf{h}}_0, \sigma_{\mathrm{cert}}^2 \mathbf{I}_d)$, where $\bar{\mathbf{h}}_0$ is the unperturbed projected state. We compute predictions $\{c_1, \ldots, c_N\}$ for each trajectory and estimate $p_A$ and $p_B$ using Clopper-Pearson confidence intervals at significance level $\alpha = 0.001$. The certified radius is then computed via~\eqref{eq:certified_radius}. Increasing $\sigma_{\mathrm{cert}}$ enlarges the certified radius at some cost to clean accuracy, providing a tunable tradeoff between guaranteed robustness and nominal performance. With the theoretical foundations for detection, uncertainty quantification, and certified robustness now established, we evaluate each of these capabilities empirically across six large-scale heterogeneous benchmarks.
+
+
+% ==============================================================
+% VII. EXPERIMENTAL SETUP
+% ==============================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Datasets}
+
+Table~\ref{tab:datasets} summarizes the six heterogeneous evaluation datasets organized into two complementary groups. The Integrated Cloud Security group (ICS3D) covers cloud, industrial IoT, and container domains. The Integrated IDPS Security group (IIS3D) covers enterprise, consumer IoT, and hybrid network domains. Together they total over 53 million samples spanning 2 to 34 attack classes.
+
+\begin{table}[!t]
+\centering
+\caption{Multi-Domain Network Intrusion Detection Datasets}
+\label{tab:datasets}
+\footnotesize
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Dataset & Domain & Samples & Classes & Features \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{ICS3D: Cloud and Industrial Security}} \\
+Microsoft Azure~\cite{microsoft2019malware} & Cloud & 1.0M & 2 & 81 \\
+Edge-IIoTset~\cite{ferrag2022edge} & Industrial IoT & 157K & 15 & 61 \\
+K8s vs Docker & Container & 50K & 5 & 47 \\
+\midrule
+\multicolumn{5}{@{}l}{\textit{IIS3D: IDPS and IoT Security}} \\
+CSE-CIC-IDS2018~\cite{sharafaldin2018toward} & Enterprise & 16.2M & 15 & 79 \\
+UNB-CIC-IoT2023~\cite{neto2023ciciot2023} & IoT Network & 33.7M & 34 & 46 \\
+UNSW-NB15~\cite{moustafa2015unsw} & Hybrid & 2.5M & 10 & 49 \\
+\midrule
+\multicolumn{2}{@{}l}{Total} & 53.6M & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Microsoft Azure Cloud dataset contains cloud-based malware predictions from system configuration features. The Edge-IIoTset covers industrial IoT sensors with 14 attack types targeting edge computing infrastructure. The Kubernetes vs Docker dataset captures container orchestration security at the pod level. CSE-CIC-IDS2018 is a widely used enterprise benchmark containing brute force, DoS, web attacks, infiltration, and botnet traffic. UNB-CIC-IoT2023 covers 33 attack classes across smart home and industrial IoT devices. UNSW-NB15 provides a hybrid mixture of normal traffic and nine contemporary attack categories.
+
+Preprocessing applies four steps uniformly across all datasets: feature harmonization to standardized categories, z-score normalization using training-partition statistics, $k$-nearest neighbor graph construction with $k = 10$ based on feature similarity, and stratified temporal splitting into training (70\%), validation (15\%), and test (15\%) partitions that preserve chronological ordering to prevent data leakage.
+
+
+\subsection{Baseline Models}
+
+We compare against eight models spanning five categories: classical machine learning (Random Forest, XGBoost), deep learning (BiLSTM, CNN-BiLSTM), graph neural networks (GraphSAGE~\cite{hamilton2017inductive}), continuous-depth models (Neural ODE~\cite{chen2018neural}), and uncertainty-aware methods (MC Dropout~\cite{gal2016dropout} with 50 stochastic forward passes, Deep Ensemble~\cite{lakshminarayanan2017simple} with 5 independently trained members). All baselines are tuned via grid search on validation performance under the same data splits and preprocessing.
+
+
+\subsection{Training Configuration}
+
+SDE-TGNN is implemented in PyTorch 2.0 with CUDA acceleration on NVIDIA A100 GPUs. The model uses $L = 4$ graph attention layers with hidden dimension $D = 256$ and $K_h = 8$ heads, an SDE state dimension of $d = 64$, temporal scales $\tau_s = 0.5$\,s, $\tau_m = 2$\,s, $\tau_l = 10$\,s, and Euler-Maruyama step size $\Delta t = 0.01$. Optimization uses AdamW with learning rate $2 \times 10^{-4}$, weight decay $10^{-4}$, batch size 128, maximum 100 epochs, and early stopping with patience 15 on validation loss. All experiments use 5-fold cross-validation and we report mean and standard deviation across folds.
+
+
+% ==============================================================
+% VIII. RESULTS AND ANALYSIS
+% ==============================================================
+\section{Results and Analysis}
+\label{sec:results}
+
+
+\subsection{Detection Performance}
+
+Table~\ref{tab:detection} presents the weighted F1 scores across all six datasets. SDE-TGNN achieves 98.7\% average weighted F1 across all domains, outperforming the next-best baseline, Neural ODE, by 4.2 percentage points. The improvement is consistent across all six datasets. The largest gains occur on the Kubernetes container dataset (97.5\% versus 91.2\%, a 6.3-point improvement) and the IoT-2023 dataset (98.9\% versus 93.5\%, a 5.4-point improvement), where high temporal variability from ephemeral container workloads and diverse IoT traffic patterns is effectively captured by the stochastic dynamics. The cross-validation variance for SDE-TGNN is notably smaller than for all baselines, indicating stable learning across folds.
+
+\begin{table}[!t]
+\centering
+\caption{Detection Performance Across Six Datasets (Weighted F1 \%)}
+\label{tab:detection}
+\footnotesize
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+Model & Azure & IIoT & K8s & IDS18 & IoT23 & UNSW & Avg \\
+\midrule
+Rand. Forest & 87.2 & 92.1 & 84.3 & 89.5 & 85.7 & 88.1 & 87.8 \\
+XGBoost & 89.5 & 93.7 & 86.8 & 91.2 & 87.4 & 89.9 & 89.8 \\
+BiLSTM & 92.1 & 94.5 & 88.2 & 93.8 & 90.2 & 91.7 & 91.8 \\
+CNN-BiLSTM & 93.8 & 95.3 & 89.7 & 94.6 & 91.5 & 92.8 & 93.0 \\
+GraphSAGE & 94.2 & 96.1 & 90.5 & 95.3 & 92.8 & 93.6 & 93.8 \\
+Neural ODE & 95.1 & 96.8 & 91.2 & 96.0 & 93.5 & 94.3 & 94.5 \\
+MC Dropout & 92.5 & 94.8 & 88.5 & 94.1 & 90.6 & 92.0 & 92.1 \\
+Deep Ens. & 94.8 & 96.5 & 90.8 & 95.7 & 93.1 & 94.0 & 94.2 \\
+\midrule
+SDE-TGNN & \textbf{98.3} & \textbf{99.1} & \textbf{97.5} & \textbf{99.4} & \textbf{98.9} & \textbf{98.8} & \textbf{98.7} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+
+\subsection{Uncertainty Calibration}
+
+Table~\ref{tab:calibration} compares the calibration quality across methods capable of producing uncertainty estimates. SDE-TGNN achieves an expected calibration error (ECE) of 0.042, representing a 54\% reduction relative to MC Dropout (0.092) and a 46\% reduction relative to Deep Ensemble (0.078). The maximum calibration error (MCE) and Brier score show consistent improvements. The 95\% prediction interval coverage reaches 91.7\%, substantially closer to the nominal target than the 78.4\% of MC Dropout or the 82.1\% of Deep Ensemble. These results validate that analytical Fokker-Planck moment propagation produces better-calibrated uncertainty than sampling-based approximations at a fraction of the computational cost.
+
+\begin{table}[!t]
+\centering
+\caption{Uncertainty Calibration Metrics (Lower is Better Except Coverage)}
+\label{tab:calibration}
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Model & ECE$\downarrow$ & MCE$\downarrow$ & Brier$\downarrow$ & 95\% Cov.$\uparrow$ \\
+\midrule
+BiLSTM & 0.187 & 0.324 & 0.142 & 61.2\% \\
+MC Dropout & 0.092 & 0.176 & 0.089 & 78.4\% \\
+Deep Ensemble & 0.078 & 0.145 & 0.071 & 82.1\% \\
+SDE-TGNN & \textbf{0.042} & \textbf{0.098} & \textbf{0.038} & \textbf{91.7\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.75\textwidth]{figuresBA/fig_calibration_robustness.pdf}
+\caption{(a) Calibration reliability diagram showing predicted confidence versus empirical accuracy across ten equal-width bins. SDE-TGNN (green) closely tracks the perfect calibration diagonal, while Deep Ensemble and MC Dropout exhibit systematic underconfidence. The shaded region indicates the calibration gap for SDE-TGNN. (b) Certified accuracy versus $\ell_2$ perturbation radius. SDE-TGNN provides provable certificates (solid) while baselines offer only empirical robustness (dashed) that degrades faster. At $R = 0.25$, SDE-TGNN certifies 76.2\% of samples.}
+\label{fig:calibration_robustness}
+\end{figure*}
+
+
+\subsection{Adversarial Robustness}
+
+Table~\ref{tab:adversarial} evaluates robustness under two empirical attacks and the certified defense. Under FGSM with perturbation budget $\epsilon = 0.05$, SDE-TGNN retains 89.7\% accuracy compared to 74.5\% for the next-best baseline (Deep Ensemble). Under the stronger 20-step PGD attack, SDE-TGNN maintains 84.3\% accuracy compared to 63.2\% for Deep Ensemble. Most importantly, SDE-TGNN achieves certified accuracy of 76.2\% at $\ell_2$ radius $R = 0.25$, meaning that for 76.2\% of test samples no perturbation within this budget can change the prediction. No baseline model provides any such formal certificate.
+
+\begin{table}[!t]
+\centering
+\caption{Adversarial Robustness (Accuracy \% Under Attack)}
+\label{tab:adversarial}
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Model & Clean & FGSM & PGD-20 & Cert-0.25 \\
+\midrule
+BiLSTM & 93.8 & 67.2 & 52.4 & --- \\
+Neural ODE & 96.0 & 71.8 & 58.9 & --- \\
+Deep Ensemble & 95.7 & 74.5 & 63.2 & --- \\
+SDE-TGNN & \textbf{99.4} & \textbf{89.7} & \textbf{84.3} & \textbf{76.2} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Cross-Domain Transfer}
+
+Table~\ref{tab:transfer} reports cross-domain results where models are trained on the ICS3D group (Cloud, IIoT, Container) and tested on the IIS3D group (Enterprise, IoT, Hybrid) without any fine-tuning. SDE-TGNN achieves 90.5\% average F1, outperforming Neural ODE by 9.4 points and BiLSTM by 14.1 points. This strong generalization stems from the continuous-time SDE formulation learning domain-invariant temporal dynamics rather than memorizing domain-specific feature patterns, directly addressing the generalization gap documented by Cantone et al.~\cite{cantone2024crossdataset}.
+
+\begin{table}[!t]
+\centering
+\caption{Cross-Domain Transfer Performance (F1 \%, No Fine-Tuning)}
+\label{tab:transfer}
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Model & IDS18 & IoT23 & UNSW & Avg \\
+\midrule
+BiLSTM & 78.3 & 74.1 & 76.9 & 76.4 \\
+Neural ODE & 82.7 & 79.5 & 81.2 & 81.1 \\
+SDE-TGNN & \textbf{91.5} & \textbf{89.8} & \textbf{90.3} & \textbf{90.5} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.75\textwidth]{figuresBA/fig_convergence_transfer.pdf}
+\caption{(a) Training convergence averaged across all six datasets. SDE-TGNN converges by epoch 25 and reaches a higher plateau than all baselines, with the stochastic dynamics providing implicit regularization that prevents overfitting. The shaded band indicates the standard deviation across folds. (b) Cross-domain generalization scatter plot comparing in-domain F1 (x-axis) against cross-domain F1 without fine-tuning (y-axis) for each model on the three IIS3D target datasets. SDE-TGNN points (green circles) cluster near the no-gap diagonal with substantially reduced generalization degradation compared to baselines.}
+\label{fig:convergence_transfer}
+\end{figure*}
+
+
+\subsection{Ablation Studies}
+
+Table~\ref{tab:ablation} presents aggregated ablation results across all six datasets, isolating the contribution of each architectural component.
+
+\begin{table}[!t]
+\centering
+\caption{Ablation Study Aggregated Across All Six Datasets}
+\label{tab:ablation}
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Configuration & F1 (\%) & ECE & Cert. & $\Delta$F1 \\
+\midrule
+Full SDE-TGNN & 98.7 & 0.042 & 76.2 & --- \\
+w/o diffusion (ODE only) & 94.5 & 0.089 & --- & $-$4.2 \\
+w/o graph attention & 93.5 & 0.047 & 72.1 & $-$5.2 \\
+w/o multi-scale fusion & 96.9 & 0.051 & 73.4 & $-$1.8 \\
+w/o Fokker-Planck (MC-50) & 98.6 & 0.068 & 75.8 & $-$0.1 \\
+w/o uncertainty loss & 98.5 & 0.071 & 74.5 & $-$0.2 \\
+single scale ($\tau_m$ only) & 96.5 & 0.048 & --- & $-$2.2 \\
+fixed equal $\boldsymbol{\beta}$ & 97.1 & 0.053 & --- & $-$1.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Removing graph attention causes the largest F1 drop of 5.2 points, confirming that network topology encodes critical discriminative information. The impact is especially pronounced on the Kubernetes dataset, where container communication patterns are highly informative for distinguishing benign orchestration from lateral movement.
+
+Removing the diffusion term reduces the model to a deterministic Neural ODE variant and drops average F1 by 4.2 points while more than doubling the ECE from 0.042 to 0.089. Certified robustness becomes impossible without stochasticity. This result provides the most direct empirical validation that the stochastic component captures real structure in network traffic that deterministic models miss, and that it is essential for enabling both the Fokker-Planck and randomized smoothing mechanisms.
+
+Ablating multi-scale fusion reveals complementary contributions from the three temporal scales. Using only the medium-term horizon reduces F1 by 2.2 points, and replacing the learned attention weights with fixed equal weighting reduces F1 by 1.6 points. Analysis of the learned weights shows that the short-term scale receives the highest weight for rapid attacks such as SYN floods ($\beta_s \approx 0.52$), while the long-term scale dominates for reconnaissance campaigns ($\beta_l \approx 0.38$).
+
+Replacing Fokker-Planck propagation with 50-sample Monte Carlo maintains nearly identical F1 (98.6\%) but degrades ECE by 62\%, providing direct evidence for the superiority of analytical moment propagation over sampling-based uncertainty. Removing the uncertainty regularization term from the loss has minimal effect on detection accuracy but increases ECE by 69\%, confirming that calibration requires explicit optimization.
+
+
+\subsection{Computational Efficiency}
+
+Table~\ref{tab:efficiency} compares computational costs. SDE-TGNN uses 3.8M parameters with 18.4 milliseconds inference latency, which includes the three parallel SDE integrations, Fokker-Planck moment propagation, and attention-based fusion. This corresponds to a throughput of approximately 6.1 million events per second, adequate for real-time monitoring of high-throughput network infrastructure. The Fokker-Planck approach achieves a 6.3$\times$ speedup over MC Dropout (115\,ms for 50 passes) while producing better-calibrated estimates.
+
+\begin{table}[!t]
+\centering
+\caption{Computational Efficiency Comparison}
+\label{tab:efficiency}
+\footnotesize
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Model & Params & Train (s/ep) & Infer (ms) & Thru. (M ev/s) \\
+\midrule
+BiLSTM & 1.2M & 45 & 2.3 & 9.8 \\
+Neural ODE & 2.1M & 187 & 12.7 & 4.2 \\
+MC Dropout & 1.2M & 45 & 115 & 0.9 \\
+Deep Ensemble & 6.0M & 225 & 11.5 & 4.8 \\
+SDE-TGNN & 3.8M & 156 & 18.4 & 6.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ==============================================================
+% IX. DISCUSSION
+% ==============================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Summary of Findings}
+
+The experimental results establish four primary findings. The explicit decomposition of network dynamics into drift and diffusion components provides a substantial advantage over both discrete-time approaches and deterministic continuous-depth models. The ablation study demonstrates that the diffusion component alone accounts for a 4.2-point average F1 improvement, validating the mathematical motivation that real network traffic contains stochastic structure beyond what deterministic models capture.
+
+Analytical Fokker-Planck moment propagation provides calibrated uncertainty at $O(d^2)$ cost, outperforming sampling-based methods in both quality (54\% lower ECE than MC Dropout) and speed (6.3$\times$ faster). The ECE of 0.042 enables reliable risk-aware alerting where high-confidence detections trigger automated responses and uncertain cases are routed to human analysts. The uncertainty regularization term in the training loss is critical for calibration quality even when detection accuracy is essentially unchanged, indicating that calibration requires explicit optimization rather than emerging as a byproduct of stochastic modeling.
+
+The certified robustness guarantees via randomized smoothing provide formal assurance against evasion attacks. The 76.2\% certified accuracy at $R = 0.25$ establishes that the majority of test samples are provably robust against bounded adversaries. This is particularly valuable for regulated industries and critical infrastructure where formal guarantees complement empirical evaluation.
+
+The continuous-time SDE formulation learns domain-invariant temporal dynamics that transfer effectively across heterogeneous network environments. The 90.5\% cross-domain F1 without fine-tuning represents a 9.4-point improvement over the best deterministic baseline, directly addressing the generalization gap documented in the literature.
+
+
+\subsection{Comparison with Prior Work}
+
+Our prior stochastic multimodal transformer~\cite{anaedevha2026stochastic} achieved strong benchmark accuracy through multimodal cross-attention with 15.7M parameters. SDE-TGNN advances this through continuous-time stochastic dynamics replacing discrete-depth transformers, reducing parameters by 76\% (3.8M versus 15.7M). The analytical Fokker-Planck uncertainty replaces MC dropout (ECE 0.042 versus 0.081), multi-scale temporal fusion captures attack patterns at all granularities, and certified robustness is entirely absent from previous work. The approaches are complementary: multimodal fusion excels when rich heterogeneous feature streams are available, while SDE-TGNN excels for continuous temporal dynamics with principled uncertainty.
+
+
+\subsection{Practical Implications}
+
+The unified architecture eliminates the need for separate detection models per domain, reducing deployment complexity in heterogeneous infrastructure. The 18.4-millisecond inference latency supports inline monitoring of high-throughput links. Calibrated uncertainty scores enable confidence-guided triage where automated responses handle high-confidence alerts and uncertain events queue for analyst review. Certified robustness guarantees provide formal assurances required for safety-critical deployments.
+
+
+\subsection{Limitations and Future Work}
+
+Several directions merit further investigation. The $O(d^2)$ covariance propagation limits scalability to very large state dimensions, and structured low-rank approximations could extend tractability. The Gaussian moment closure may underestimate tail probabilities for highly nonlinear dynamics, suggesting that higher-order moment propagation or particle filtering could be beneficial. The learned drift and diffusion functions are black-box; symbolic regression or gradient attribution could illuminate the discovered dynamics. Scaling graph attention to networks with millions of nodes would require hierarchical graph sampling strategies. Extending to online or continual learning with elastic weight consolidation would enable adaptation to evolving attack patterns. Adaptive attacks that specifically target the stochastic structure merit dedicated study.
+
+
+\subsection{Ethics, Privacy, and Compliance}
+
+All six evaluation datasets are publicly available or collected under institutional approvals with de-identification. IP addresses are hashed and user identifiers are removed prior to feature extraction; raw payloads are not retained. Preprocessing scripts and hyperparameter configurations are released to support reproducibility under applicable regulations. Gradient clipping with norm 1.0 is applied throughout training, and optional Gaussian noise for differential privacy is available in the released codebase. The system is designed for authorized defensive network monitoring only.
+
+
+% ==============================================================
+% X. CONCLUSION
+% ==============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have introduced SDE-TGNN, a unified framework that combines temporal graph neural networks with stochastic differential equations, Fokker-Planck-based analytical uncertainty propagation, multi-scale temporal fusion, and certified adversarial robustness for network intrusion detection. The design is motivated by the mathematical observation that network traffic decomposes naturally into deterministic trends and stochastic fluctuations, a structure exactly captured by the It\^{o} SDE formulation, and that the Fokker-Planck equation enables efficient analytical propagation of the resulting state distribution. Evaluated on six heterogeneous datasets totaling over 53 million samples across cloud, industrial IoT, container, enterprise, consumer IoT, and hybrid network domains, SDE-TGNN achieves 98.7\% weighted F1 with calibrated uncertainty (ECE 0.042), certified adversarial robustness (76.2\% at radius 0.25), and strong cross-domain transfer (90.5\% F1 without fine-tuning). The unified architecture, real-time inference capability, principled uncertainty quantification, and formal robustness guarantees establish SDE-TGNN as a practical and theoretically grounded solution for heterogeneous network security.
+
+
+% ==============================================================
+% ACKNOWLEDGMENTS
+% ==============================================================
+\section*{Acknowledgment}
+
+This research was supported by the Neural Networks Laboratory of the Institute of Cyber Intelligence Systems, National Research Nuclear University MEPhI (Moscow Engineering Physics Institute), Moscow. We thank anonymous reviewers for their constructive feedback.
+
+
+\section*{Data and Code Availability}
+
+The implementation code, trained models, preprocessing scripts, hyperparameter configurations, and evaluation protocols are publicly available at \url{https://github.com/rogerpanel/SDE-TGNN-Models/tree/main/SDE_TGNN_Models}. The six evaluation datasets are publicly accessible through their respective repositories.
+
+
+% ==============================================================
+% REFERENCES
+% ==============================================================
+\vspace{-2pt}
+\enlargethispage{2\baselineskip}
+\begin{thebibliography}{40}
+
+\bibitem{kim2016lstm}
+J.~Kim and H.~Tu, ``Long short-term memory recurrent neural network classifier for intrusion detection,'' in \emph{Proc. IEEE PlatCon}, 2016, pp.~1--5.
+
+\bibitem{kipf2017semi}
+T.~N.~Kipf and M.~Welling, ``Semi-supervised classification with graph convolutional networks,'' in \emph{Proc. ICLR}, 2017.
+
+\bibitem{velivckovic2018graph}
+P.~Veli\v{c}kovi\'c, G.~Cucurull, A.~Casanova, A.~Romero, P.~Li\`{o}, and Y.~Bengio, ``Graph attention networks,'' in \emph{Proc. ICLR}, 2018.
+
+\bibitem{vaswani2017attention}
+A.~Vaswani \emph{et al.}, ``Attention is all you need,'' in \emph{Proc. NeurIPS}, 2017, pp.~5998--6008.
+
+\bibitem{cheng2024kairos}
+Z.~Cheng \emph{et al.}, ``KAIROS: Building cost-efficient machine learning systems for intrusion detection with provenance,'' in \emph{Proc. IEEE S\&P}, 2024.
+
+\bibitem{khoury2024jbeil}
+R.~Khoury \emph{et al.}, ``Jbeil: Temporal graph-based inductive learning to detect lateral movement,'' in \emph{Proc. IEEE S\&P}, 2024.
+
+\bibitem{guerra2025graphids}
+A.~Guerra \emph{et al.}, ``GraphIDS: Scalable graph-based intrusion detection with transformer-masked autoencoders,'' in \emph{Proc. NeurIPS}, 2025.
+
+\bibitem{cantone2024crossdataset}
+M.~F.~Cantone, C.~Marrocco, and A.~Bria, ``On the cross-dataset generalization of machine learning for network intrusion detection,'' \emph{IEEE Access}, vol.~12, pp.~51527--51540, 2024.
+
+\bibitem{guo2017calibration}
+C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q.~Weinberger, ``On calibration of modern neural networks,'' in \emph{Proc. ICML}, 2017, pp.~1321--1330.
+
+\bibitem{gal2016dropout}
+Y.~Gal and Z.~Ghahramani, ``Dropout as a Bayesian approximation: Representing model uncertainty in deep learning,'' in \emph{Proc. ICML}, 2016, pp.~1050--1059.
+
+\bibitem{lakshminarayanan2017simple}
+B.~Lakshminarayanan, A.~Pritzel, and C.~Blundell, ``Simple and scalable predictive uncertainty estimation using deep ensembles,'' in \emph{Proc. NeurIPS}, 2017, pp.~6402--6413.
+
+\bibitem{madry2018towards}
+A.~Madry, A.~Makelov, L.~Schmidt, D.~Tsipras, and A.~Vladu, ``Towards deep learning models resistant to adversarial attacks,'' in \emph{Proc. ICLR}, 2018.
+
+\bibitem{risken1989fpe}
+H.~Risken, \emph{The Fokker-Planck Equation: Methods of Solution and Applications}, 2nd~ed.\hskip 1em Springer, 1989.
+
+\bibitem{cohen2019certified}
+J.~Cohen, E.~Rosenfeld, and J.~Z.~Kolter, ``Certified adversarial robustness via randomized smoothing,'' in \emph{Proc. ICML}, 2019, pp.~1310--1320.
+
+\bibitem{hamilton2017inductive}
+W.~L.~Hamilton, R.~Ying, and J.~Leskovec, ``Inductive representation learning on large graphs,'' in \emph{Proc. NeurIPS}, 2017, pp.~1024--1034.
+
+\bibitem{he2024transformer}
+X.~He \emph{et al.}, ``Transformer-based network intrusion detection for IoT systems,'' \emph{IEEE Internet Things J.}, vol.~11, no.~3, pp.~4567--4579, 2024.
+
+\bibitem{anaedevha2026stochastic}
+R.~N.~Anaedevha and A.~G.~Trofimov, ``Stochastic multimodal transformer with uncertainty quantification for robust network intrusion detection,'' in \emph{Proc. Int. Conf. Neuroinformatics}, Cham: Springer, 2025, pp.~428--447.
+
+\bibitem{anaedevha2026mambashield}
+R.~N.~Anaedevha, A.~G.~Trofimov, and Y.~V.~Borodachev, ``MambaShield: Selective state-space models for poisoning-resilient sequential modelling,'' \emph{Expert Syst. Appl.}, p.~131175, 2026.
+
+\bibitem{vanlangendonck2024pptgnn}
+L.~Van~Langendonck \emph{et al.}, ``PPT-GNN: Pre-training temporal GNNs for intrusion detection,'' \emph{arXiv:2404.xxxxx}, 2024.
+
+\bibitem{jia2024magic}
+Z.~Jia \emph{et al.}, ``MAGIC: Detecting advanced persistent threats via masked graph representation learning,'' in \emph{Proc. USENIX Security}, 2024.
+
+\bibitem{chen2018neural}
+R.~T.~Q.~Chen, Y.~Rubanova, J.~Bettencourt, and D.~K.~Duvenaud, ``Neural ordinary differential equations,'' in \emph{Proc. NeurIPS}, 2018, pp.~6571--6583.
+
+\bibitem{kong2020sdenet}
+L.~Kong, J.~Sun, and C.~Zhang, ``SDE-Net: Equipping deep neural networks with uncertainty estimates,'' in \emph{Proc. ICML}, 2020, pp.~5405--5415.
+
+\bibitem{li2020scalable}
+X.~Li, T.-K.~L.~Wong, R.~T.~Q.~Chen, and D.~Duvenaud, ``Scalable gradients for stochastic differential equations,'' in \emph{Proc. AISTATS}, 2020, pp.~3870--3882.
+
+\bibitem{oh2024stable}
+S.~Oh \emph{et al.}, ``Stable neural stochastic differential equations for irregular time series,'' in \emph{Proc. ICLR}, 2024.
+
+\bibitem{bartosh2025simulation}
+A.~Bartosh \emph{et al.}, ``Simulation-free training of neural SDEs with $O(1)$ complexity,'' in \emph{Proc. ICML}, 2025.
+
+\bibitem{bergna2023graph}
+C.~Bergna \emph{et al.}, ``Graph neural stochastic differential equations,'' \emph{arXiv:2308.xxxxx}, 2023.
+
+\bibitem{lin2024gnsd}
+H.~Lin \emph{et al.}, ``Graph neural stochastic diffusion for node representation learning,'' in \emph{Proc. ICML}, 2024.
+
+\bibitem{calvo2025lgnsde}
+A.~Calvo-Ordo\~{n}ez \emph{et al.}, ``LGNSDE: Latent graph neural stochastic differential equations,'' in \emph{Proc. ICLR}, 2025. (Spotlight)
+
+\bibitem{mackay1992bayesian}
+D.~J.~C.~MacKay, ``A practical Bayesian framework for backpropagation networks,'' \emph{Neural Computation}, vol.~4, no.~3, pp.~448--472, 1992.
+
+\bibitem{kingma2014auto}
+D.~P.~Kingma and M.~Welling, ``Auto-encoding variational Bayes,'' in \emph{Proc. ICLR}, 2014.
+
+\bibitem{mucsanyi2024benchmarking}
+B.~Mucs\'anyi \emph{et al.}, ``Benchmarking uncertainty quantification methods for deep learning,'' in \emph{Proc. NeurIPS Datasets and Benchmarks}, 2024.
+
+\bibitem{fuchsgruber2024energy}
+J.~Fuchsgruber, T.~Gao, and S.~G\"{u}nnemann, ``Energy-based epistemic uncertainty for graph neural networks,'' in \emph{Proc. NeurIPS}, 2024. (Spotlight)
+
+\bibitem{jungmann2025analytical}
+D.~Jungmann \emph{et al.}, ``Analytical aleatoric uncertainty propagation through neural networks,'' \emph{IEEE Trans. Neural Netw. Learn. Syst.}, early access, 2025.
+
+\bibitem{titensky2024factor}
+A.~Titensky \emph{et al.}, ``Factor graph formulations for neural network uncertainty propagation,'' in \emph{Proc. AAAI}, 2024.
+
+\bibitem{sarkka2013bayesian}
+S.~S\"{a}rkk\"{a}, \emph{Bayesian Filtering and Smoothing}.\hskip 1em Cambridge University Press, 2013.
+
+\bibitem{wong2018provable}
+E.~Wong and J.~Z.~Kolter, ``Provable defenses against adversarial examples via the convex outer adversarial polytope,'' in \emph{Proc. ICML}, 2018, pp.~5286--5295.
+
+\bibitem{gosch2024provable}
+L.~Gosch \emph{et al.}, ``Provable robustness of GNNs against structural perturbations,'' in \emph{Proc. NeurIPS}, 2024. (Best Paper)
+
+\bibitem{scholten2023randomized}
+Y.~Scholten \emph{et al.}, ``Randomized message-interception smoothing for certifiably robust graph neural networks,'' in \emph{Proc. ICML}, 2023.
+
+\bibitem{lyu2024adaptive}
+J.~Lyu \emph{et al.}, ``Adaptive randomized smoothing via $f$-divergence privacy,'' in \emph{Proc. NeurIPS}, 2024. (Spotlight)
+
+\bibitem{wang2023manda}
+X.~Wang \emph{et al.}, ``MANDA: Detecting adversarial examples in network intrusion detection systems,'' \emph{IEEE Trans. Dependable Secure Comput.}, vol.~20, no.~5, pp.~4101--4115, 2023.
+
+\bibitem{oksendal2003sde}
+B.~\O{}ksendal, \emph{Stochastic Differential Equations: An Introduction with Applications}, 6th~ed.\hskip 1em Springer, 2003.
+
+\bibitem{kloeden1992numerical}
+P.~E.~Kloeden and E.~Platen, \emph{Numerical Solution of Stochastic Differential Equations}.\hskip 1em Springer, 1992.
+
+\bibitem{watts1998collective}
+D.~J.~Watts and S.~H.~Strogatz, ``Collective dynamics of `small-world' networks,'' \emph{Nature}, vol.~393, pp.~440--442, 1998.
+
+\bibitem{microsoft2019malware}
+Microsoft, ``Microsoft malware prediction dataset,'' \emph{Kaggle}, 2019.
+
+\bibitem{ferrag2022edge}
+M.~A.~Ferrag \emph{et al.}, ``Edge-IIoTset: A new comprehensive realistic cyber security dataset of IoT and IIoT applications,'' \emph{IEEE Access}, vol.~10, pp.~35809--35826, 2022.
+
+\bibitem{sharafaldin2018toward}
+I.~Sharafaldin, A.~H.~Lashkari, and A.~A.~Ghorbani, ``Toward generating a new intrusion detection dataset and intrusion traffic characterization,'' in \emph{Proc. ICISSP}, 2018, pp.~108--116.
+
+\bibitem{neto2023ciciot2023}
+E.~C.~P.~Neto \emph{et al.}, ``CIC-IoT-2023: A real-time dataset and benchmark for large-scale attacks in IoT environment,'' \emph{Sensors}, vol.~23, no.~13, p.~5941, 2023.
+
+\bibitem{moustafa2015unsw}
+N.~Moustafa and J.~Slay, ``UNSW-NB15: A comprehensive data set for network intrusion detection systems,'' in \emph{Proc. MilCIS}, 2015, pp.~1--6.
+
+\end{thebibliography}
+
+\end{document}
